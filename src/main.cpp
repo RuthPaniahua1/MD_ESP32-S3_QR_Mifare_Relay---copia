@@ -1296,7 +1296,7 @@ void loop()
           }   
         }
       }
-if (MifareReaderAvailable)
+  if (MifareReaderAvailable)
     {
       if (alivetrue ==true || miFareWifi ==false)
       {
