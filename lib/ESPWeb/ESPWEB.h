@@ -3,7 +3,7 @@
 
 #include <WiFi.h>
 #include <StatisticsValues.h>
-#include <WebServiceComunication.h>
+#include "WebServiceComunication.h"
 using namespace std;
 
 class ESPWEB
@@ -11,7 +11,7 @@ class ESPWEB
     public:
         explicit ESPWEB();
 
-        bool ClientConnected(int countQRValido, int counQRIni, int countQRInv, int countErrWifi, int counQRSoli, int counWifiC, int counErrServ, int counErrServT, int countQRValidoT, String ipFija,String DateTime);
+        bool ClientConnected(int countQRValido, int counQRIni, int countQRInv, int countErrWifi, int counQRSoli, int counWifiC, int counErrServ, int counErrServT, int countQRValidoT, String ipFija, String DateTime);
         
         StatisticsValues Values;
 

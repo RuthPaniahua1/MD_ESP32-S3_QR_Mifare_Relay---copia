@@ -548,6 +548,7 @@ void setup()
   myQrreaderwork.StartBaudRate(18,17,9600); //Inicializacion QR
   myWEBService.port(); //Inicializacion de puerto Serial de Web service esp32
   SPI.begin(); // Init SPI bus
+ // myServerComunic.hourBegin();
   //RfChip.PCD_Init();  
   Serial.println("**********ESP32 INIT***********");
   getCountVariables();
