@@ -5,6 +5,7 @@
 
 #include "microTuple.h"
 
+
 constexpr uint32_t sc(uint16_t x) { return x * 1000; }
 
 constexpr uint32_t mn(uint16_t x) { return x * 60000; }

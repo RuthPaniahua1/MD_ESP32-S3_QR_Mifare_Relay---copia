@@ -85,6 +85,7 @@ const void* SNS;
 #define KEYACCESS_SECTOR_1  0x07 //Sector1
 #define KEYACCESS_SECTOR_2  0x0B //Sector2
 
+
 MFRC522 RfChip(SS_PIN, RST_PIN);
 MFRC522::MIFARE_Key key;
 
@@ -143,6 +144,7 @@ TimeOut OkStatusLedTimeout;
 TimeOut ErrorStatusLedTimeout;
 TimeOut MifareActivateTimeout;
 uint8_t tv[16] ={2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+uint8_t ET[16] ={2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
 int TTE = 30;
 byte TTE_MSB = 0;
@@ -164,6 +166,7 @@ char msg[50];
 int value = 0;
 String content = "";
 bool MQTTRecive = false;
+String toUpperCaseString(String input);
 void WiFiConnection();
 bool initWiFi();
 void initSPIFFS();
@@ -179,6 +182,7 @@ String toUpperCaseString(String input);
 void SuscribeMqtt();
 void PublisMqtt(String data);
 
+void relay();
 int countReconect;
 int Buzzer = 2;
 
@@ -414,7 +418,7 @@ void ServerConnection(String DATA)
       mySignal.flashLed(2,GREEN,150,25,true);
       if (QRActive==false)
       {
-        MifareReaderAvailable=true;
+        // miFareReaderWriter.MifareReaderAvailable=true;
       }
       //relay();
     }
@@ -426,7 +430,7 @@ void ServerConnection(String DATA)
       mySignal.flashLed(2,RED,500,150,true);
        if (QRActive==false)
       {
-        MifareReaderAvailable=true;
+        // miFareReaderWriter.MifareReaderAvailable=true;
       }
     }  
   }
@@ -653,7 +657,8 @@ void setup()
   myQrreaderwork.StartBaudRate(18,17,9600); //Inicializacion QR
   myWEBService.port(); //Inicializacion de puerto Serial de Web service esp32
   SPI.begin(); // Init SPI bus
-  RfChip.PCD_Init();  
+ // myServerComunic.hourBegin();
+  //RfChip.PCD_Init();  
   Serial.println("**********ESP32 INIT***********");
   getCountVariables();
   pinMode(myPin, OUTPUT);
@@ -672,14 +677,19 @@ void setup()
   timers[1].enabled=false; //lastTimeWiFiConnection;
   timers[2].enabled=false; //LastTimeAlive = 0;
   timers[3].enabled = false;
+
  // toggleCounting(true,LastTimeQRStart);**************************************************************************QR START
   memset(UniqueIDArduino, 0 , 16); // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//UNIQUE ID ARDUINO
   IDArduino();
+  toggleCounting(true,LastTimeQRStart);
+  memset(UniqueIDArduino, 0 , 16); // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+   //UNIQUE ID ARDUINO
+  // miFareReaderWriter.IDArduino();
   Serial.print(F("ID ESP32::"));
-  printHex(UniqueIDArduino, 16);
+  // miFareReaderWriter.printHex(UniqueIDArduino, 16);
   Serial.println("");
   Serial.println(miFareWifi);
-  validatorSN = returnValidator(UniqueIDArduino, 16);
+  // validatorSN = miFareReaderWriter.returnValidator(UniqueIDArduino, 16);
    if ((counQRIni == 4) && (countPCW <= timetoConfigureWifi))
   {
     Serial.println("modo de configuracion");
@@ -1342,6 +1352,46 @@ void loop()
   if(MQTTRecive == true)
   {
     if(relayON==true)
+    counQRIni = 0;
+    EEPROMVariables.SaveVariables(ESPBeginnings,counQRIni);
+  } 
+  if (elapsedTime(LastTimeQRStart, timeToQRStart)  || QRsendComand == true)
+      {
+        QRsendComand = false;
+        toggleCounting(true,LastTimeQRStart);
+        QRStatus = myQrreaderwork.StartQR();
+        if (QRStatus == 0)
+        {
+          QRsendComand = true;
+          countTryQR++;
+          delay(500);
+          QRsendComand = true;
+           if (countTryQR ==5 && QRActive == false){
+            Serial.println("No hay QR conectado");
+            toggleCounting(false,LastTimeQRStart);
+            QRsendComand = false;
+            // miFareReaderWriter.MifareReaderAvailable = true;
+            toggleCounting(true,LastTimeAlive);
+          }
+        }
+        else
+        {
+          //miFareWifi=true;
+          //toggleCounting(true,LastTimeAlive);
+          //WifiConnected = true;
+          // miFareReaderWriter.MifareReaderAvailable = true;
+          QRActive = true;
+          if (alivetrue ==true)
+          {
+            mySignal.ledON(CIAN);
+          }
+          else 
+          {
+            mySignal.ledON(RED);
+          }   
+        }
+      }
+  if (MifareReaderAvailable)
     {
       relayOff();
       delay(100);
@@ -1352,7 +1402,62 @@ void loop()
     mySignal.ledON(PINK);
     //QRsendComand = true;
     Serial.println("Activo Relay");
+  
+  if (myQrreaderwork.ReadQR()>0)
+  {
+        //mySignal.ledON(BLUE);
+        myQR = myQrreaderwork.getQR();
+        LongQR = myQR.length();
+        counQRSoli++;
+        EEPROMVariables.SaveVariables(QRReadings,counQRSoli);
+        SelectQR(myQR,LongQR);
   }
+  if ((elapsedTime(LastTimeAlive,timeToAlive) || alive == true)&& WiFi.status() == WL_CONNECTED && miFareWifi==true)
+    {
+      alive = false;
+      Serial.println("Alive");
+      if(myServerComunic.HttpClientRequest(true,arrayWS,false,ipWS,ip,validatorSN,0,ConectionPort,ConsultPort))
+             {
+                //mySignal.ledOFF();
+                toggleCounting(true,LastTimeAlive);
+                Serial.print("DateTime: ");
+                Serial.println(myServerComunic.Hour());
+                alivetrue = true;
+                miFareWifi = true;
+                if (QRActive==false)
+                {
+                  MifareReaderAvailable = true;
+                }
+                else
+                {
+                  MifareReaderAvailable = true;
+                }
+                //if (! rtc.begin()) {
+                //Serial.println("No hay un módulo RTC");
+                //while (1);
+              //}
+                //mySignal.ledON(BLUE);
+              }
+              else
+              {
+                mySignal.ledOFF();
+                mySignal.ledON(RED);
+                Serial.println("error server");
+                countAlive ++;
+                Serial.println(countAlive);
+                AP=1;
+                alive = true;
+                alivetrue = false;
+                if(elapsedTime(lastTimeServerConnection,30000))
+                {
+                  mySignal.ledOFF();
+                  mySignal.ledON(RED);
+                  toggleCounting(true,LastTimeAlive);
+                  alive = false;
+                  AccessPoint();
+                }
+              }
+    }
   if (elapsedTime(LastTimeRelay,timeToRelay))
     {
       relayOff();
