@@ -52,7 +52,7 @@ String Card;
 #define LastTimeRelay 5
 #define LastTimeMifare 6
 
-int myPin = 33;
+int myPin = 16;
 RTC_DS3231 rtc;
 //****************Loop2**********************
 TaskHandle_t WebService;
@@ -101,7 +101,7 @@ int timeToReconnectWifi;
 const long interval = 10000; 
 
 int timeToAlive = 20000;
-
+bool relayON = false;
 int AP ;
 //Definicion de variables para lector QR
 String myQR = "";
@@ -114,7 +114,7 @@ String datos;
 bool QRStatus;
 bool QRsendComand = false;
 int timeToQRStart = 5300;
-int timeToRelay = 1000;
+int timeToRelay = 500;
 //unsigned long LastTimeQRStart = 0;
 int countAlive;
 
@@ -173,7 +173,8 @@ void ServerConnection(String DATA);
 void IDArduino();
 String returnValidator(byte *buffer, byte bufferSize);
 void printHex(byte *buffer, byte bufferSize);
-void relay();
+void relayOn();
+void relayOff();
 String toUpperCaseString(String input);
 void SuscribeMqtt();
 void PublisMqtt(String data);
@@ -230,7 +231,7 @@ void dateTime(String QR)
   if(Date == Data)
   {
     Serial.println("OPEN");
-    relay();
+    //relay();
   }
 }
 
@@ -257,7 +258,9 @@ void SelectQR(String QR, int LongQR)
           Serial.println(qr.length());
           if (WifiConnected == true)
           {
-            ServerConnection(qr);
+            //ServerConnection(qr);
+            PublisMqtt(qr);
+            
           }
           else
           {
@@ -369,11 +372,13 @@ void callback(char* topic, byte* payload, unsigned int length)
   {
 
     MQTTRecive = true;
+
   }
   if (content=="Desactivate")
   {
+    relayOff();
     //MQTTRecive = false;
-    MifareReaderAvailable = false;
+    //MifareReaderAvailable = false;
     mySignal.ledOFF();
   }
   
@@ -411,7 +416,7 @@ void ServerConnection(String DATA)
       {
         MifareReaderAvailable=true;
       }
-      relay();
+      //relay();
     }
     else
     {
@@ -652,7 +657,7 @@ void setup()
   Serial.println("**********ESP32 INIT***********");
   getCountVariables();
   pinMode(myPin, OUTPUT);
-  digitalWrite(myPin, HIGH); 
+  digitalWrite(myPin, LOW); 
   //rtc.setTime();
   counQRIni ++;
   Serial.println(counQRIni);
@@ -968,8 +973,15 @@ String returnCard(byte *buffer, byte bufferSize)
   String ArrayCard;
   String index = " ";
   for (byte i = 0; i < bufferSize; i++) {
-    card += (buffer[i] < 0x10 ? "0" :  " ");
+    if (buffer[i] < 0x10) {
+        card += "0";
+    }
+    // Convertimos el byte a su representación hexadecimal en mayúsculas y lo añadimos a 'card'
     card += String(buffer[i], HEX);
+    // Añadimos un espacio entre los bytes, excepto después del último byte
+    if (i < bufferSize - 1) {
+        card += " ";
+    }
   }
   card = toUpperCaseString(card);
   Card = separator.SeparatorIndex(card,index);
@@ -977,10 +989,10 @@ String returnCard(byte *buffer, byte bufferSize)
       {
         Card[h];
       }
-  ArrayCard = Card[4] + Card[3] + Card[2] + Card[1];
+  ArrayCard = Card[3] + Card[2] + Card[1] + Card[0];
   if(ArrayCard.length()>8)
   {
-    ArrayCard = Card[3] + Card[2] + Card[1];
+    ArrayCard = Card[2] + Card[1] + Card[0];
   }
   return ArrayCard;
 }
@@ -1034,8 +1046,9 @@ bool MifareReadProcess(byte SectorAccess,byte BlockAccess)
    printHex(RfChip.uid.uidByte, RfChip.uid.size);
   Card = returnCard(RfChip.uid.uidByte, RfChip.uid.size);
   //printDec(RfChip.uid.uidByte, RfChip.uid.size);
+  Serial.println();
   Serial.println("Card: ");
-  Serial.println(Card);
+  Serial.print(Card);
   Serial.println();
   Serial.println(" Card present");
   //Card type
@@ -1328,88 +1341,40 @@ void loop()
   HandleMqtt();
   if(MQTTRecive == true)
   {
+    if(relayON==true)
+    {
+      relayOff();
+      delay(100);
+    }
     mqttClient.publish("readSensor", (char*)validatorSN.c_str());
     MQTTRecive = false;
-    QRsendComand = true;
-    Serial.println("Activo QR");
-  }
-  if ((millis()+countPCW)>=timetoConfigureWifi) //Active Accespoint counter
-  {
-    counQRIni = 0;
-    EEPROMVariables.SaveVariables(ESPBeginnings,counQRIni);
-  } 
-  if (QRsendComand == true) // elapsedTime(LastTimeQRStart, timeToQRStart)  ||  QR Start
-      {
-        Serial.println("Entre a QRSENDCOMAND");
-        QRsendComand = false;
-        toggleCounting(true,LastTimeQRStart);
-        QRStatus = myQrreaderwork.StartQR();
-        if (QRStatus == 0)
-        {
-          countTryQR++;
-          delay(500);
-          QRsendComand = true;
-           if (countTryQR ==3 && QRActive == false){
-            countTryQR = 0;
-            Serial.println("No hay QR conectado");
-            toggleCounting(false,LastTimeQRStart);
-            QRsendComand = false;
-            MifareReaderAvailable = true;
-            toggleCounting(true,LastTimeAlive);
-          }
-        }
-        else
-        {
-          //miFareWifi=true;
-          //toggleCounting(true,LastTimeAlive);
-          //WifiConnected = true;
-          MifareReaderAvailable = false;
-          QRActive = true;
-          mySignal.ledON(CIAN);
-          // if (alivetrue ==true)
-          // {
-          //   mySignal.ledON(CIAN);
-          // }
-          // else 
-          // {
-          //   mySignal.ledON(RED);
-          // }   
-        }
-      }
-  if (MifareReaderAvailable) //Mifare reader Active
-    {
-      mySignal.ledON(BLUE);
-      if(MifareReadProcess(KEYACCESS_SECTOR_1,BLOCK_0 + 4))
-      {
-        if (WiFi.status() == WL_CONNECTED)
-        {
-          PublisMqtt(Card);
-        }
-      }
-    }
-  if (myQrreaderwork.ReadQR()>0) //QR reader Active 
-  {
-        mySignal.ledON(BLUE);
-        myQR = myQrreaderwork.getQR();
-        LongQR = myQR.length();
-        counQRSoli++;
-        EEPROMVariables.SaveVariables(QRReadings,counQRSoli);
-        SelectQR(myQR,LongQR);
+    relayOn();
+    mySignal.ledON(PINK);
+    //QRsendComand = true;
+    Serial.println("Activo Relay");
   }
   if (elapsedTime(LastTimeRelay,timeToRelay))
     {
-      digitalWrite(myPin, HIGH); 
+      relayOff();
       toggleCounting(false,LastTimeRelay);
-      Serial.println("low");
     }
  TimeOut::handler();  
 }
 
-void relay()
+void relayOn()
 {
-  digitalWrite(myPin, LOW); 
+  toggleCounting(true, LastTimeRelay);
+  digitalWrite(myPin, HIGH); 
   Serial.println("high");
-  toggleCounting(true, LastTimeRelay);            
+  relayON= true;       
+}
+
+void relayOff()
+{
+   digitalWrite(myPin, LOW); 
+   //toggleCounting(false,LastTimeRelay);
+   Serial.println("low");
+   relayON=false;
 }
 
 void toggleCounting(boolean enable,int timerIndex) 
