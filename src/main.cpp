@@ -15,7 +15,11 @@
 #include "TimeOut.h"
 #include <Separator.h>
 #include "ArduinoUniqueID.h"
-#include <Wire.h>
+//#include <Wire.h>
+#include <PubSubClient.h>
+#include <WiFi.h>
+#include <AsyncMqttClient.h>
+#include <ArduinoJson.h>
 // Search for parameter in HTTP POST request
 const char* PARAM_INPUT_1 = "ssid";
 const char* PARAM_INPUT_2 = "pass";
@@ -147,6 +151,19 @@ byte TTE_LSB = 0;
 byte EntryDate[16];
 byte ReadDatas[16];
 
+//*****************MQTT variables**************************
+const char* MQTT_BROKER_ADRESS = "192.168.2.61";
+const uint16_t MQTT_PORT = 1883;
+const char* MQTT_CLIENT_NAME = "ESP8266Client_1";
+
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+
+long lastMsg = 0;
+char msg[50];
+int value = 0;
+String content = "";
+bool MQTTRecive = false;
 void WiFiConnection();
 bool initWiFi();
 void initSPIFFS();
@@ -158,6 +175,9 @@ String returnValidator(byte *buffer, byte bufferSize);
 void printHex(byte *buffer, byte bufferSize);
 void relay();
 String toUpperCaseString(String input);
+void SuscribeMqtt();
+void PublisMqtt(String data);
+
 int countReconect;
 int Buzzer = 2;
 
@@ -261,14 +281,15 @@ void SelectQR(String QR, int LongQR)
           }
           else
           {
-              if (WifiConnected == true)
-          {
-            ServerConnection(qr);
-          }
-          else
-          {
-            dateTime(qr);
-          }
+            if (WifiConnected == true)
+            {
+              //ServerConnection(qr);
+              PublisMqtt(qr);  
+            }
+            else
+            {
+              dateTime(qr);
+            }
           }
         }
     }
@@ -292,6 +313,84 @@ void SelectQR(String QR, int LongQR)
             Serial.println(myQR);
         }
     }
+}
+
+void PublisMqtt(String data)
+{
+  mySignal.ledOFF();
+  String payload = myServerComunic.SerializeObject(false,validatorSN,data,"192");
+  mqttClient.publish("readSensor", (char*)payload.c_str());
+  
+}
+
+void ConnectMqtt()
+{
+  while (!mqttClient.connected())
+  {
+    Serial.print("Starting MQTT connection...");
+    if (mqttClient.connect(MQTT_CLIENT_NAME))
+    {
+      SuscribeMqtt();
+    }
+    else
+    {
+      Serial.print("Failed MQTT connection, rc=");
+      Serial.print(mqttClient.state());
+      Serial.println(" try again in 5 seconds");
+
+      delay(5000);
+    }
+  }
+}
+
+void HandleMqtt()
+{
+  if (!mqttClient.connected())
+  {
+    ConnectMqtt();
+  }
+  mqttClient.loop();
+}
+
+void callback(char* topic, byte* payload, unsigned int length) 
+{
+  Serial.print("Received on ");
+  Serial.print(topic);
+  Serial.print(": ");
+
+  content = "";  
+  for (size_t i = 0; i < length; i++) {
+    content.concat((char)payload[i]);
+  }
+  Serial.print(content);
+  Serial.println();
+
+  if (content=="Activate")
+  {
+
+    MQTTRecive = true;
+  }
+  if (content=="Desactivate")
+  {
+    //MQTTRecive = false;
+    MifareReaderAvailable = false;
+    mySignal.ledOFF();
+  }
+  
+}
+
+void SuscribeMqtt()
+{
+  mqttClient.subscribe("activeSensor");
+  Serial.println("MQTT suscribe activeSensor");
+  mySignal.flashLed(3,BLUE,200,100,false);
+}
+
+void InitMqtt() 
+{
+  mqttClient.setServer(MQTT_BROKER_ADRESS, MQTT_PORT);
+  SuscribeMqtt();
+  mqttClient.setCallback(callback);
 }
 
 void ServerConnection(String DATA)
@@ -568,9 +667,8 @@ void setup()
   timers[1].enabled=false; //lastTimeWiFiConnection;
   timers[2].enabled=false; //LastTimeAlive = 0;
   timers[3].enabled = false;
-  toggleCounting(true,LastTimeQRStart);
-  memset(UniqueIDArduino, 0 , 16); // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-   //UNIQUE ID ARDUINO
+ // toggleCounting(true,LastTimeQRStart);**************************************************************************QR START
+  memset(UniqueIDArduino, 0 , 16); // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<//UNIQUE ID ARDUINO
   IDArduino();
   Serial.print(F("ID ESP32::"));
   printHex(UniqueIDArduino, 16);
@@ -774,6 +872,7 @@ void WiFiConnection()
     lastWiFiStatus = WiFi.status();
     alive = true;
     WifiConnected = true;
+    InitMqtt();
   }
   else
   {
@@ -1215,10 +1314,10 @@ bool MifareReadProcess(byte SectorAccess,byte BlockAccess)
   analogWrite(Buzzer, 255);
   delay(300);
   //Beep_Buzzer(2058,300, 2);
-  MifareReaderAvailable = false;
+  //MifareReaderAvailable = false;
   mySignal.flashLed(1,GREEN,500,0,true);
-  toggleCounting(true,LastTimeMifare);
-  OkStatusLedTimeout.timeOut(400, OkStatusLedTimeoutHandler); //delay 10000=10seg, callback function
+  //toggleCounting(true,LastTimeMifare);
+  //OkStatusLedTimeout.timeOut(400, OkStatusLedTimeoutHandler); //delay 10000=10seg, callback function
   //MifareActivateTimeoutHandler();
   Serial.println("");  
   return true;  
@@ -1226,52 +1325,32 @@ bool MifareReadProcess(byte SectorAccess,byte BlockAccess)
 
 void loop() 
 {
-  if ((WiFi.status() != WL_CONNECTED && accessPoint == false && WifiConnected==true) || (elapsedTime(lastTimetoReconnectWifi,60000) && miFareWifi==true))
-      {
-        Serial.println("**STEP ERRORCONNECTION**");
-        countErrWifi++;
-        Serial.println(countErrWifi);
-        EEPROMVariables.SaveVariables(WifiDisconnections,countErrWifi);
-        Serial.println ("\nNetwork WiFi  dis-connected");
-        mySignal.flashLed (2, PINK ,700,300,0);
-        countReconect++;
-        Serial.println(countReconect);
-        if(countReconect<5)
-        {
-          WiFiConnection();
-        }
-        else
-        {
-          toggleCounting(false,lastTimetoReconnectWifi);
-          alive = false;
-          WifiConnected = false;
-          miFareWifi = false;
-          accessPoint = true;
-        }
-        if(myQrreaderwork.ReadQR()>0)
-        {
-          myQR = myQrreaderwork.getQR();
-          LongQR = myQR.length();
-          SelectQR(myQR,LongQR);
-        }
-      }
-  if ((millis()+countPCW)>=timetoConfigureWifi)
+  HandleMqtt();
+  if(MQTTRecive == true)
+  {
+    mqttClient.publish("readSensor", (char*)validatorSN.c_str());
+    MQTTRecive = false;
+    QRsendComand = true;
+    Serial.println("Activo QR");
+  }
+  if ((millis()+countPCW)>=timetoConfigureWifi) //Active Accespoint counter
   {
     counQRIni = 0;
     EEPROMVariables.SaveVariables(ESPBeginnings,counQRIni);
   } 
-  if (elapsedTime(LastTimeQRStart, timeToQRStart)  || QRsendComand == true)
+  if (QRsendComand == true) // elapsedTime(LastTimeQRStart, timeToQRStart)  ||  QR Start
       {
+        Serial.println("Entre a QRSENDCOMAND");
         QRsendComand = false;
         toggleCounting(true,LastTimeQRStart);
         QRStatus = myQrreaderwork.StartQR();
         if (QRStatus == 0)
         {
-          QRsendComand = true;
           countTryQR++;
           delay(500);
           QRsendComand = true;
-           if (countTryQR ==5 && QRActive == false){
+           if (countTryQR ==3 && QRActive == false){
+            countTryQR = 0;
             Serial.println("No hay QR conectado");
             toggleCounting(false,LastTimeQRStart);
             QRsendComand = false;
@@ -1286,35 +1365,29 @@ void loop()
           //WifiConnected = true;
           MifareReaderAvailable = false;
           QRActive = true;
-          if (alivetrue ==true)
-          {
-            mySignal.ledON(CIAN);
-          }
-          else 
-          {
-            mySignal.ledON(RED);
-          }   
+          mySignal.ledON(CIAN);
+          // if (alivetrue ==true)
+          // {
+          //   mySignal.ledON(CIAN);
+          // }
+          // else 
+          // {
+          //   mySignal.ledON(RED);
+          // }   
         }
       }
-  if (MifareReaderAvailable)
+  if (MifareReaderAvailable) //Mifare reader Active
     {
-      if (alivetrue ==true || miFareWifi ==false)
-      {
-        mySignal.ledON(BLUE);
-      }
-      else 
-      {
-        mySignal.ledON(RED);
-      } 
+      mySignal.ledON(BLUE);
       if(MifareReadProcess(KEYACCESS_SECTOR_1,BLOCK_0 + 4))
       {
         if (WiFi.status() == WL_CONNECTED)
         {
-          ServerConnection(arrayWS);
+          PublisMqtt(Card);
         }
       }
     }
-  if (myQrreaderwork.ReadQR()>0)
+  if (myQrreaderwork.ReadQR()>0) //QR reader Active 
   {
         mySignal.ledON(BLUE);
         myQR = myQrreaderwork.getQR();
@@ -1323,64 +1396,13 @@ void loop()
         EEPROMVariables.SaveVariables(QRReadings,counQRSoli);
         SelectQR(myQR,LongQR);
   }
-  if ((elapsedTime(LastTimeAlive,timeToAlive) || alive == true)&& WiFi.status() == WL_CONNECTED && miFareWifi==true)
-    {
-      alive = false;
-      Serial.println("Alive");
-      if(myServerComunic.HttpClientRequest(true,arrayWS,false,ipWS,ip,validatorSN,0,ConectionPort,ConsultPort))
-              {
-                //mySignal.ledOFF();
-                toggleCounting(true,LastTimeAlive);
-                Serial.print("DateTime: ");
-                Serial.println(myServerComunic.Hour());
-                alivetrue = true;
-                miFareWifi = true;
-                if (QRActive==false)
-                {
-                  MifareReaderAvailable = true;
-                }
-                //if (! rtc.begin()) {
-                //Serial.println("No hay un módulo RTC");
-                //while (1);
-              //}
-                //mySignal.ledON(BLUE);
-              }
-              else
-              {
-                mySignal.ledOFF();
-                mySignal.ledON(RED);
-                Serial.println("error server");
-                countAlive ++;
-                Serial.println(countAlive);
-                AP=1;
-                alive = true;
-                alivetrue = false;
-                if(elapsedTime(lastTimeServerConnection,30000))
-                {
-                  mySignal.ledOFF();
-                  mySignal.ledON(RED);
-                  toggleCounting(true,LastTimeAlive);
-                  alive = false;
-                  AccessPoint();
-                }
-              }
-    }
   if (elapsedTime(LastTimeRelay,timeToRelay))
     {
       digitalWrite(myPin, HIGH); 
       toggleCounting(false,LastTimeRelay);
       Serial.println("low");
     }
-  if(elapsedTime(LastTimeMifare,100))
-  {
-    toggleCounting(false,LastTimeMifare);
-    MifareActivateTimeoutHandler();
-  }
-  // if (myWEBService.ClientConnected(countQRValido, counQRIni, countQRInv, countErrWifi, counQRSoli, counWifiC, counErrServ, counErrServT, countQRValidoT,ip,myServerComunic.Hour()))
-  //   {
-  //     Serial.println("Se conecto un cliente ");
-  //   }
-   TimeOut::handler();  
+ TimeOut::handler();  
 }
 
 void relay()
