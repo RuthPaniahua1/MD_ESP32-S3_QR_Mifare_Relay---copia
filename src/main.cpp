@@ -1,4 +1,4 @@
-//MASTER 
+//rtcds3231 dont work
 #include <Arduino.h>
 #include "QReaderWork.h"
 #include "SPG75QR.h"
