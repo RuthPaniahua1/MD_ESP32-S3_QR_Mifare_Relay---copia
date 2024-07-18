@@ -554,7 +554,7 @@ void setup()
   myQrreaderwork.StartBaudRate(18,17,9600); //Inicializacion QR
   myWEBService.port(); //Inicializacion de puerto Serial de Web service esp32
   SPI.begin(); // Init SPI bus
-  //RfChip.PCD_Init();  
+  RfChip.PCD_Init();  
   Serial.println("**********ESP32 INIT***********");
   getCountVariables();
   pinMode(myPin, OUTPUT);
@@ -1289,7 +1289,7 @@ void loop()
           //miFareWifi=true;
           //toggleCounting(true,LastTimeAlive);
           //WifiConnected = true;
-          MifareReaderAvailable = false;
+          //MifareReaderAvailable = false;
           QRActive = true;
           if (alivetrue ==true)
           {
@@ -1346,7 +1346,7 @@ if (MifareReaderAvailable)
                 }
                 else
                 {
-                  MifareReaderAvailable = false;
+                  MifareReaderAvailable = true;
                 }
                 //if (! rtc.begin()) {
                 //Serial.println("No hay un módulo RTC");
