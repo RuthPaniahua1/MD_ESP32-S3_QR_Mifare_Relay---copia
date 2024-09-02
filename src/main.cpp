@@ -867,6 +867,30 @@ void printHex(byte *buffer, byte bufferSize) {
   }
 }
 
+// String returnCard(byte *buffer, byte bufferSize)
+// {
+//   String card;
+//   String* Card;
+//   String ArrayCard;
+//   String index = " ";
+//   for (byte i = 0; i < bufferSize; i++) {
+//     card += (buffer[i] < 0x10 ? "0" :  " ");
+//     card += String(buffer[i], HEX);
+//   }
+//   card = toUpperCaseString(card);
+//   Card = separator.SeparatorIndex(card,index);
+//   for ( int h = 0; h < 8; h++ ) 
+//       {
+//         Card[h];
+//       }
+//   ArrayCard = Card[4] + Card[3] + Card[2] + Card[1];
+//   if(ArrayCard.length()>8)
+//   {
+//     ArrayCard = Card[3] + Card[2] + Card[1];
+//   }
+//   return ArrayCard;
+// }
+
 String returnCard(byte *buffer, byte bufferSize)
 {
   String card;
@@ -874,8 +898,15 @@ String returnCard(byte *buffer, byte bufferSize)
   String ArrayCard;
   String index = " ";
   for (byte i = 0; i < bufferSize; i++) {
-    card += (buffer[i] < 0x10 ? "0" :  " ");
+    if (buffer[i] < 0x10) {
+        card += "0";
+    }
+    // Convertimos el byte a su representación hexadecimal en mayúsculas y lo añadimos a 'card'
     card += String(buffer[i], HEX);
+    // Añadimos un espacio entre los bytes, excepto después del último byte
+    if (i < bufferSize - 1) {
+        card += " ";
+    }
   }
   card = toUpperCaseString(card);
   Card = separator.SeparatorIndex(card,index);
@@ -883,13 +914,14 @@ String returnCard(byte *buffer, byte bufferSize)
       {
         Card[h];
       }
-  ArrayCard = Card[4] + Card[3] + Card[2] + Card[1];
+  ArrayCard = Card[3] + Card[2] + Card[1] + Card[0];
   if(ArrayCard.length()>8)
   {
-    ArrayCard = Card[3] + Card[2] + Card[1];
+    ArrayCard = Card[2] + Card[1] + Card[0];
   }
   return ArrayCard;
 }
+
 
 String toUpperCaseString(String input) {
   String result = "";
